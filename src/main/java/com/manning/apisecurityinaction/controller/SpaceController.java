@@ -24,6 +24,11 @@ public class SpaceController {
             throw new IllegalArgumentException("space name too long");
         }
         var owner = json.getString("owner");
+        var subject = request.attribute("subject");
+        if (!owner.equals(subject)) {
+            throw new IllegalArgumentException(
+                    "owner must match authenticated user");
+        }
         if (!owner.matches("[a-zA-Z][a-zA-Z0-9]{1,29}")) {
             throw new IllegalArgumentException("invalid username");
         }
@@ -42,6 +47,38 @@ public class SpaceController {
             return new JSONObject()
                     .put("name", spaceName).put("uri", "/spaces/" + spaceId);
 
+        });
+    }
+
+    public JSONObject postMessage(Request request, Response response) {
+        var spaceId = Long.parseLong(request.params(":spaceId"));
+        var json = new JSONObject(request.body());
+        var user = json.getString("author");
+        if (!user.matches("[a-zA-Z][a-zA-Z0-9]{0,29}")) {
+            throw new IllegalArgumentException("invalid username");
+        }
+        if (!user.equals(request.attribute("subject"))) {
+            throw new IllegalArgumentException(
+                    "author must match authenticated user");
+        }
+        var message = json.getString("message");
+        if (message.length() > 1024) {
+            throw new IllegalArgumentException("message is too long");
+        }
+
+        return database.withTransaction(tx -> {
+            var msgId = database.findUniqueLong(
+                    "SELECT NEXT VALUE FOR msg_id_seq;");
+            database.updateUnique(
+                    "INSERT INTO messages(space_id, msg_id, msg_time," +
+                            "author, msg_text) " +
+                            "VALUES(?, ?, current_timestamp, ?, ?)",
+                    spaceId, msgId, user, message);
+
+            response.status(201);
+            var uri = "/spaces/" + spaceId + "/messages/" + msgId;
+            response.header("Location", uri);
+            return new JSONObject().put("uri", uri);
         });
     }
 }

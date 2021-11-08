@@ -24,6 +24,11 @@ public class Main {
 
         var spaceController = new SpaceController(database);
 
+        var userController = new UserController(database);
+        post("/users", userController::registerUser);
+
+        before(userController::authenticate);
+
         var rateLimiter = RateLimiter.create(2.0d);
 
         before((request, response) -> {
@@ -54,6 +59,8 @@ public class Main {
         });
 
         post("/spaces", spaceController::createSpace);
+
+        post("/spaces/:spaceId/messages", spaceController::postMessage);
 
         internalServerError(new JSONObject()
                 .put("error", "internal server error").toString());
