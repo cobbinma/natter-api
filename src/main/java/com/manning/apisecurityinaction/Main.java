@@ -14,6 +14,7 @@ import static spark.Spark.*;
 
 public class Main {
     public static void main(String... args) throws Exception {
+        secure("localhost.p12", "changeit", null, null);
         var datasource = JdbcConnectionPool.create(
                 "jdbc:h2:mem:natter", "natter", "password");
         var database = Database.forDataSource(datasource);
@@ -56,6 +57,7 @@ public class Main {
             response.header("Content-Security-Policy",
                     "default-src 'none'; frame-ancestors 'none'; sandbox");
             response.header("Server", "");
+            response.header("Strict-Transport-Security", "max-age=31536000");
         });
 
         post("/spaces", spaceController::createSpace);
