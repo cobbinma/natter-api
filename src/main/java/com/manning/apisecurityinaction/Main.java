@@ -30,6 +30,10 @@ public class Main {
 
         before(userController::authenticate);
 
+        var auditController = new AuditController(database);
+        before(auditController::auditRequestStart);
+        afterAfter(auditController::auditRequestEnd);
+
         var rateLimiter = RateLimiter.create(2.0d);
 
         before((request, response) -> {
