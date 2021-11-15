@@ -1,18 +1,21 @@
 package com.manning.apisecurityinaction;
 
+import static spark.Spark.*;
+
 import java.nio.file.*;
 
-import com.google.common.util.concurrent.*;
-import com.manning.apisecurityinaction.controller.*;
 import org.dalesbred.Database;
 import org.dalesbred.result.EmptyResultException;
 import org.h2.jdbcx.JdbcConnectionPool;
 import org.json.*;
+
+import com.google.common.util.concurrent.RateLimiter;
+import com.manning.apisecurityinaction.controller.*;
+
 import spark.*;
 
-import static spark.Spark.*;
-
 public class Main {
+
     public static void main(String... args) throws Exception {
         secure("localhost.p12", "changeit", null, null);
         var datasource = JdbcConnectionPool.create(
@@ -21,35 +24,27 @@ public class Main {
         createTables(database);
         datasource = JdbcConnectionPool.create(
                 "jdbc:h2:mem:natter", "natter_api_user", "password");
+
         database = Database.forDataSource(datasource);
-
         var spaceController = new SpaceController(database);
-
         var userController = new UserController(database);
-        post("/users", userController::registerUser);
-
-        before(userController::authenticate);
-
         var auditController = new AuditController(database);
-        before(auditController::auditRequestStart);
-        afterAfter(auditController::auditRequestEnd);
 
         var rateLimiter = RateLimiter.create(2.0d);
 
         before((request, response) -> {
             if (!rateLimiter.tryAcquire()) {
-                response.header("Retry-After", "2");
                 halt(429);
             }
         });
 
         before(((request, response) -> {
-                if (request.requestMethod().equals("POST") &&
-                        !"application/json".equals(request.contentType())) {
-                    halt(415, new JSONObject().put(
-                            "error", "Only application/json supported"
-                    ).toString());
-                }
+            if (request.requestMethod().equals("POST") &&
+                    !"application/json".equals(request.contentType())) {
+                halt(415, new JSONObject().put(
+                        "error", "Only application/json supported"
+                ).toString());
+            }
         }));
 
         afterAfter((request, response) -> {
@@ -61,12 +56,45 @@ public class Main {
             response.header("Content-Security-Policy",
                     "default-src 'none'; frame-ancestors 'none'; sandbox");
             response.header("Server", "");
-            response.header("Strict-Transport-Security", "max-age=31536000");
         });
 
+        before(userController::authenticate);
+
+        before(auditController::auditRequestStart);
+        afterAfter(auditController::auditRequestEnd);
+
+        before("/spaces", userController::requireAuthentication);
         post("/spaces", spaceController::createSpace);
 
+        // Additional REST endpoints not covered in the book:
+
+        before("/spaces/:spaceId/messages",
+                userController.requirePermission("POST", "w"));
         post("/spaces/:spaceId/messages", spaceController::postMessage);
+
+        before("/spaces/:spaceId/messages/*",
+                userController.requirePermission("GET", "r"));
+        get("/spaces/:spaceId/messages/:msgId",
+                spaceController::readMessage);
+
+        before("/spaces/:spaceId/messages",
+                userController.requirePermission("GET", "r"));
+        get("/spaces/:spaceId/messages", spaceController::findMessages);
+
+        before("/spaces/:spaceId/members",
+                userController.requirePermission("POST", "rwd"));
+        post("/spaces/:spaceId/members", spaceController::addMember);
+
+        var moderatorController =
+                new ModeratorController(database);
+
+        before("/spaces/:spaceId/messages/*",
+                userController.requirePermission("DELETE", "d"));
+        delete("/spaces/:spaceId/messages/:msgId",
+                moderatorController::deletePost);
+
+        get("/logs", auditController::readAuditLog);
+        post("/users", userController::registerUser);
 
         internalServerError(new JSONObject()
                 .put("error", "internal server error").toString());
@@ -85,7 +113,7 @@ public class Main {
         response.body(new JSONObject().put("error", ex.getMessage()).toString());
     }
 
-    public static void createTables(Database database) throws Exception {
+    private static void createTables(Database database) throws Exception {
         var path = Paths.get(
                 Main.class.getResource("/schema.sql").toURI());
         database.update(Files.readString(path));
