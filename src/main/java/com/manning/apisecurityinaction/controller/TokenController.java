@@ -21,7 +21,7 @@ public class TokenController {
         var expiry = now().plus(10, ChronoUnit.MINUTES);
 
         var token = new TokenStore.Token(expiry, subject);
-        var tokenId = tokenStore.create(request, response);
+        var tokenId = tokenStore.create(request, token);
 
         response.status(201);
         return new JSONObject().put("token", tokenId);

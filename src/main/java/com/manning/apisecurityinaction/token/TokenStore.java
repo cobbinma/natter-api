@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public interface TokenStore {
 
-    String create(Request request, Response response);
+    String create(Request request, Token token);
     Optional<Token> read(Request request, String tokenId);
 
     class Token{
