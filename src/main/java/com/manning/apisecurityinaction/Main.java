@@ -65,6 +65,7 @@ public class Main {
         var tokenController = new TokenController(tokenStore);
 
         before(userController::authenticate);
+        before(tokenController::validateToken);
 
         before(auditController::auditRequestStart);
         afterAfter(auditController::auditRequestEnd);

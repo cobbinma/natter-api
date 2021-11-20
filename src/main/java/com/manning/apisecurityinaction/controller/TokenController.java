@@ -26,4 +26,16 @@ public class TokenController {
         response.status(201);
         return new JSONObject().put("token", tokenId);
     }
+
+    public void validateToken(Request request, Response response) {
+        var tokenId = request.headers("X-CSRF-Token");
+        if (tokenId == null) return;
+
+        tokenStore.read(request, tokenId).ifPresent(token -> {
+            if (now().isBefore(token.expiry)) {
+                request.attribute("subject", token.username);
+                token.attributes.forEach(request::attribute);
+            }
+        });
+    }
 }
