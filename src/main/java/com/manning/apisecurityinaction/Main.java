@@ -3,8 +3,10 @@ package com.manning.apisecurityinaction;
 import static spark.Spark.*;
 
 import java.nio.file.*;
+import java.util.Set;
 
 import com.manning.apisecurityinaction.token.CookieTokenStore;
+import com.manning.apisecurityinaction.token.DatabaseTokenStore;
 import com.manning.apisecurityinaction.token.TokenStore;
 import org.dalesbred.Database;
 import org.dalesbred.result.EmptyResultException;
@@ -19,6 +21,7 @@ import spark.*;
 public class Main {
 
     public static void main(String... args) throws Exception {
+        port(args.length > 0 ? Integer.parseInt(args[0]) : Service.SPARK_DEFAULT_PORT);
         Spark.staticFiles.location("/public");
         secure("localhost.p12", "changeit", null, null);
         var datasource = JdbcConnectionPool.create(
@@ -34,12 +37,12 @@ public class Main {
         var auditController = new AuditController(database);
 
         var rateLimiter = RateLimiter.create(2.0d);
-
         before((request, response) -> {
             if (!rateLimiter.tryAcquire()) {
                 halt(429);
             }
         });
+        before(new CorsFilter(Set.of("https://localhost:9999")));
 
         before(((request, response) -> {
             if (request.requestMethod().equals("POST") &&
@@ -61,7 +64,7 @@ public class Main {
             response.header("Server", "");
         });
 
-        TokenStore tokenStore = new CookieTokenStore();
+        TokenStore tokenStore = new DatabaseTokenStore(database);
         var tokenController = new TokenController(tokenStore);
 
         before(userController::authenticate);
